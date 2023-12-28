@@ -18,8 +18,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void pickAndProcessImage() async {
     try {
+
+      String? downloadsPath;
+      if (Platform.isWindows) {
+        downloadsPath = 'C:/Users/${Platform.environment['USERNAME']}/Downloads/';
+      } else if (Platform.isMacOS) {
+        downloadsPath = '/Users/${Platform.environment['USER']}/Downloads/';
+      } else if (Platform.isLinux) {
+        downloadsPath = '/home/${Platform.environment['USER']}/Downloads/';
+      }
+
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.image,
+        initialDirectory: downloadsPath,
         // allowedExtensions: [
         //   'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'tif', 'heic', // lowercase
         //   'JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'TIFF', 'TIF', 'HEIC', // uppercase
