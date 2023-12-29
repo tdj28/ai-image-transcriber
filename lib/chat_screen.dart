@@ -10,7 +10,6 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path; // Add this import for path manipulation
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
-import 'image_processing.dart'; // Import the new file
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -55,9 +54,41 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
+      // The path is now definitely a non-null String
+      // Create a File object from the path
       File file = File(selectedFilePath);
+      Uint8List fileBytes;
 
-      Uint8List? fileBytes = await processImage(file);
+      // Check if the file is a HEIC image and convert it if necessary
+      if (selectedFilePath.toLowerCase().endsWith('.heic')) {
+        setState(() {
+          _messages.insert(0, ChatMessage(text: "Converting from HEIC to JPG...", isImage: false, isUserMessage: false));
+        });
+
+        final tempDir = await getTemporaryDirectory();
+        final targetPath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        // Attempt to compress and get the File
+        XFile? convertedFile = await FlutterImageCompress.compressAndGetFile(
+          file.absolute.path,
+          targetPath,
+          format: CompressFormat.jpeg,
+          quality: 90,
+        );
+
+        if (convertedFile == null) {
+          print("Error: HEIC to JPEG conversion failed.");
+          return;
+        }
+
+        // Read bytes from the converted file
+        fileBytes = await convertedFile.readAsBytes();
+      } else {
+        // If it's not HEIC, read bytes from the original file
+        fileBytes = await file.readAsBytes();
+      }
+
+      //Uint8List? fileBytes = await processImage(file);
 
       if (fileBytes != null) {
 
@@ -131,7 +162,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -139,32 +169,7 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Flexible(
-            child: DropRegion(
-              formats: Formats.standardFormats,
-              onDropOver: (event) {
-                // Determine the type of operation based on the event
-                return DropOperation.copy;
-              },
-              onPerformDrop: (event) async {
-                final item = event.session.items.first;
-                if (item.canProvide(Formats.png)) {
-                  // Handle dropped PNG image
-                  final reader = item.dataReader!;
-                  reader.getFile(Formats.png, (file) async {
-                    // final fileBytes = await file.readAll();
-                    
-                    // setState(() {
-                    //   _messages.insert(0, ChatMessage(imageData: fileBytes, isImage: true, isUserMessage: true));
-                    // });
-
-                    Uint8List? fileBytes = await processImage(file, isDataReaderFile: true);
-
-
-                  }, onError: (error) {
-                    print('Error reading value $error');
-                  });
-                }
-              },
+            child: SelectionArea(
               child: ListView.builder(
                 padding: EdgeInsets.all(8.0),
                 reverse: true,
@@ -174,7 +179,11 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Divider(height: 1.0),
-          _buildTextComposer(),
+          Container(
+            decoration: BoxDecoration(color: Colors.blue.shade100),
+            //decoration: BoxDecoration(color: Theme.of(context).cardColor),
+            child: _buildTextComposer(),
+          ),
         ],
       ),
     );
