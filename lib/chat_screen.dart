@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:file_selector_macos/file_selector_macos.dart';
 import 'chat_message.dart';
 import 'openai.dart';
 import 'dart:io';
-
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path; // Add this import for path manipulation
 
 class ChatScreen extends StatefulWidget {
   @override
@@ -18,7 +21,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void pickAndProcessImage() async {
     try {
-
       String? downloadsPath;
       if (Platform.isWindows) {
         downloadsPath = 'C:/Users/${Platform.environment['USERNAME']}/Downloads/';
@@ -29,13 +31,12 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
+        type: FileType.custom,
         initialDirectory: downloadsPath,
-        // allowedExtensions: [
-        //   'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'tif', 'heic', // lowercase
-        //   'JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'TIFF', 'TIF', 'HEIC', // uppercase
-        //   // Add any other image formats you need to support
-        // ],
+        allowedExtensions: [
+          'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'tif', 'heic',
+          'JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'TIFF', 'TIF', 'HEIC',
+        ],
       );
 
       if (result == null) {
@@ -43,18 +44,62 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
+      // This gives you the path as a String, and it's nullable
+      final String? selectedFilePath = result.files.single.path;
+
+      // Check if the path is not null
+      if (selectedFilePath == null) {
+        print("File path is null - file might be invalid.");
+        return;
+      }
+
+      // The path is now definitely a non-null String
+      // Create a File object from the path
+      File file = File(selectedFilePath);
       Uint8List fileBytes;
-      if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-        // On desktop platforms, manually read the file
-        String? filePath = result.files.single.path;
-        if (filePath == null) {
-          print("File path is null - file might be invalid.");
+
+      // final filepath = result.files.single.path; // This should give you the path as a String
+      // // final PlatformFile pickedFile = result.files.first;
+      // // String? filePath = pickedFile.path;
+      
+      // if (filePath == null) {
+      //   print("File path is null - file might be invalid.");
+      //   return;
+      // }
+
+      // // Directly use the path of the selected file to create a dart:io File
+      // File file = File(filePath);
+      // Uint8List fileBytes;
+      // // File file = File(filePath);
+      // // Uint8List fileBytes;
+
+      // Check if the file is a HEIC image and convert it if necessary
+      if (selectedFilePath.toLowerCase().endsWith('.heic')) {
+        setState(() {
+          _messages.insert(0, ChatMessage(text: "Converting from HEIC to JPG...", isImage: false));
+        });
+
+        final tempDir = await getTemporaryDirectory();
+        final targetPath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        // Attempt to compress and get the File
+        XFile? convertedFile = await FlutterImageCompress.compressAndGetFile(
+          file.absolute.path,
+          targetPath,
+          format: CompressFormat.jpeg,
+          quality: 90,
+        );
+
+        if (convertedFile == null) {
+          print("Error: HEIC to JPEG conversion failed.");
           return;
         }
-        fileBytes = await File(filePath).readAsBytes();
+
+        // Read bytes from the converted file
+        fileBytes = await convertedFile.readAsBytes();
       } else {
-        // On other platforms, use the bytes directly
-        fileBytes = result.files.single.bytes!;
+        // If it's not HEIC, read bytes from the original file
+        fileBytes = await file.readAsBytes();
       }
 
       String base64Image = base64.encode(fileBytes);
@@ -69,10 +114,12 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.insert(0, ChatMessage(text: responseText, isImage: false));
         });
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
       print("Error during file pick or processing: $e");
+      print("Stack trace: $stackTrace");
     }
   }
+
 
 
 
@@ -121,11 +168,13 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Flexible(
-            child: ListView.builder(
-              padding: EdgeInsets.all(8.0),
-              reverse: true,
-              itemBuilder: (_, int index) => _buildMessageItem(_messages[index]),
-              itemCount: _messages.length,
+            child: SelectionArea(
+              child: ListView.builder(
+                padding: EdgeInsets.all(8.0),
+                reverse: true,
+                itemBuilder: (_, int index) => _buildMessageItem(_messages[index]),
+                itemCount: _messages.length,
+              ),
             ),
           ),
           Divider(height: 1.0),
