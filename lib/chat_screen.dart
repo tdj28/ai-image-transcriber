@@ -58,25 +58,10 @@ class _ChatScreenState extends State<ChatScreen> {
       File file = File(selectedFilePath);
       Uint8List fileBytes;
 
-      // final filepath = result.files.single.path; // This should give you the path as a String
-      // // final PlatformFile pickedFile = result.files.first;
-      // // String? filePath = pickedFile.path;
-      
-      // if (filePath == null) {
-      //   print("File path is null - file might be invalid.");
-      //   return;
-      // }
-
-      // // Directly use the path of the selected file to create a dart:io File
-      // File file = File(filePath);
-      // Uint8List fileBytes;
-      // // File file = File(filePath);
-      // // Uint8List fileBytes;
-
       // Check if the file is a HEIC image and convert it if necessary
       if (selectedFilePath.toLowerCase().endsWith('.heic')) {
         setState(() {
-          _messages.insert(0, ChatMessage(text: "Converting from HEIC to JPG...", isImage: false));
+          _messages.insert(0, ChatMessage(text: "Converting from HEIC to JPG...", isImage: false, isUserMessage: false));
         });
 
         final tempDir = await getTemporaryDirectory();
@@ -105,13 +90,15 @@ class _ChatScreenState extends State<ChatScreen> {
       String base64Image = base64.encode(fileBytes);
 
       setState(() {
-        _messages.insert(0, ChatMessage(imageData: fileBytes, isImage: true));
-        _messages.insert(0, ChatMessage(text: "Processing via Artificial Intelligence...please wait", isImage: false));
+        _messages.insert(0, ChatMessage(imageData: fileBytes, isImage: true, isUserMessage: true));
+        _messages.insert(0, ChatMessage(text: "Processing via Artificial Intelligence...please wait", isImage: false, isUserMessage: false));
       });
 
-      getResponseFromOpenAI(base64Image).then((responseText) {
+      getResponseFromOpenAI(
+        textInput: "Here is an image, can you transcribe it? Please correct obvious spelling errors and grammar errors. Please only provide the transcript, unless you aren't sure about something in which case add some notes about that uncertainty and separate it from the transcript with =================================",
+        base64Image: base64Image).then((responseText) {
         setState(() {
-          _messages.insert(0, ChatMessage(text: responseText, isImage: false));
+          _messages.insert(0, ChatMessage(text: responseText, isImage: false, isUserMessage: false));
         });
       });
     } catch (e, stackTrace) {
@@ -119,8 +106,6 @@ class _ChatScreenState extends State<ChatScreen> {
       print("Stack trace: $stackTrace");
     }
   }
-
-
 
 
   @override
@@ -157,7 +142,17 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleSubmitted(String text) {
     _textController.clear();
     setState(() {
-      _messages.insert(0, ChatMessage(text: text, isImage: false));
+      _messages.insert(0, ChatMessage(text: text, isImage: false, isUserMessage: true));
+    });
+
+// getResponseFromOpenAI(
+//   textInput: "Here is some text I want to process with OpenAI.",
+//   base64Image: "your_base64_encoded_image_string_here", // pass this only if you have an image
+// );
+    getResponseFromOpenAI(textInput: text).then((responseText) {
+      setState(() {
+        _messages.insert(0, ChatMessage(text: responseText, isImage: false, isUserMessage: false));
+      });
     });
   }
 
@@ -179,7 +174,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           Divider(height: 1.0),
           Container(
-            decoration: BoxDecoration(color: Theme.of(context).cardColor),
+            decoration: BoxDecoration(color: Colors.blue.shade100),
+            //decoration: BoxDecoration(color: Theme.of(context).cardColor),
             child: _buildTextComposer(),
           ),
         ],
@@ -188,17 +184,46 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildMessageItem(ChatMessage message) {
+    // Define colors for user and AI messages
+    Color userMessageColor = Colors.blue.shade100; // Example color for user messages
+    Color aiMessageColor = Colors.green.shade100; // Example color for AI messages
+
+    // Alignment based on the message sender
+    AlignmentGeometry alignment = message.isUserMessage ? Alignment.centerRight : Alignment.centerLeft;
+
+    // Define a common container style
+    BoxDecoration boxDecoration = BoxDecoration(
+      color: message.isUserMessage ? userMessageColor : aiMessageColor,
+      borderRadius: BorderRadius.circular(10),
+    );
+
+    Widget messageContent;
     if (message.isImage) {
-      return Container(
-        margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-        child: message.imageData != null
-            ? Image.memory(message.imageData!, fit: BoxFit.contain)
-            : Placeholder(),
-      );
+      // For image messages
+      messageContent = message.imageData != null
+          ? Image.memory(message.imageData!, fit: BoxFit.contain)
+          : Placeholder();
     } else {
-      return ListTile(
-        title: Text(message.text ?? ''),
+      // For text messages
+      messageContent = Text(
+        message.text ?? '',
+        style: TextStyle(
+          // Your text style here
+        ),
       );
     }
+
+    return Align(
+      alignment: alignment,
+      child: Container(
+        decoration: boxDecoration,
+        margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+        padding: EdgeInsets.all(8.0),
+        child: messageContent,
+      ),
+    );
   }
+
+
+
 }
